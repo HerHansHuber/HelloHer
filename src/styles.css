@@ -26,7 +26,11 @@ h1 { margin: 0; font-size: clamp(2.35rem, 7vw, 5.5rem); line-height: 0.9; letter
 .control-block { display: grid; gap: 8px; margin-bottom: 16px; color: #dfe5ff; }
 .compact-control { margin-top: -6px; }
 .toggle-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; margin: 12px 0 18px; color: #cbd5ff; font-size: 0.9rem; line-height: 1.35; }
+.toggle-row.tight { margin: 8px 0; }
 .toggle-row input { width: 18px; height: 18px; accent-color: #8dd3ff; }
+.render-section { margin: 18px 0; padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); }
+.render-section h2 { margin: 0 0 12px; font-size: 0.84rem; color: #8dd3ff; text-transform: uppercase; letter-spacing: 0.14em; }
+.color-input { min-height: 44px; padding: 5px; cursor: pointer; }
 .control-block span { color: #99a5d8; font-size: 0.9rem; font-weight: 700; }
 input, select { width: 100%; border: 1px solid rgba(162, 178, 255, 0.24); background: rgba(255,255,255,0.07); color: #fff; border-radius: 14px; padding: 12px 14px; outline: none; }
 select option { color: #111827; }

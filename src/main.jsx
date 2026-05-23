@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { EXAMPLE_PATTERNS, validateSiteswap } from './juggling/siteswap.js';
 import { JugglingScene } from './visualizer/JugglingScene.jsx';
+import { BALL_MATERIALS, DEFAULT_RENDER_FEATURES, RENDER_FEATURES } from './visualizer/materialOptions.js';
 import './styles.css';
 
 function App() {
@@ -13,8 +14,14 @@ function App() {
   const [passing, setPassing] = useState(false);
   const [passThreshold, setPassThreshold] = useState(5);
   const [paused, setPaused] = useState(false);
+  const [ballMaterial, setBallMaterial] = useState('glass');
+  const [customColor, setCustomColor] = useState('#8dd3ff');
+  const [renderFeatures, setRenderFeatures] = useState(DEFAULT_RENDER_FEATURES);
   const validation = useMemo(() => validateSiteswap(pattern), [pattern]);
   const selectedPreset = EXAMPLE_PATTERNS.find((item) => item.siteswap === pattern);
+  const toggleRenderFeature = (featureId) => {
+    setRenderFeatures((current) => ({ ...current, [featureId]: !current[featureId] }));
+  };
 
   return (
     <main className="app-shell">
@@ -101,6 +108,43 @@ function App() {
             />
           </label>
 
+          <div className="render-section">
+            <h2>Ball material</h2>
+            <label className="control-block compact-control">
+              <span>Texture / material</span>
+              <select value={ballMaterial} onChange={(event) => setBallMaterial(event.target.value)}>
+                {BALL_MATERIALS.map((material) => (
+                  <option key={material.id} value={material.id}>{material.label}</option>
+                ))}
+              </select>
+            </label>
+            {ballMaterial === 'custom' && (
+              <label className="control-block compact-control">
+                <span>Custom ball color</span>
+                <input
+                  className="color-input"
+                  type="color"
+                  value={customColor}
+                  onChange={(event) => setCustomColor(event.target.value)}
+                />
+              </label>
+            )}
+          </div>
+
+          <div className="render-section">
+            <h2>Beauty rendering</h2>
+            {RENDER_FEATURES.map((feature) => (
+              <label className="toggle-row tight" key={feature.id} title={feature.description}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(renderFeatures[feature.id])}
+                  onChange={() => toggleRenderFeature(feature.id)}
+                />
+                <span>{feature.label}</span>
+              </label>
+            ))}
+          </div>
+
           <div className="button-row three-buttons">
             <button onClick={() => setPaused((value) => !value)}>{paused ? 'Resume' : 'Pause'}</button>
             <button className="ghost" onClick={() => setShowTrails((value) => !value)}>
@@ -135,6 +179,9 @@ function App() {
             personCount={personCount}
             passing={passing}
             passThreshold={passThreshold}
+            ballMaterial={ballMaterial}
+            customColor={customColor}
+            renderFeatures={renderFeatures}
           />
         </section>
       </section>
