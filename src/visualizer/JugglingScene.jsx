@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { makeArcPoints, samplePatternState, validateSiteswap } from '../juggling/siteswap.js';
 import { getMaterialOption, normalizeRenderFeatures } from './materialOptions.js';
 
@@ -68,7 +69,29 @@ export function JugglingScene({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
+    renderer.domElement.style.touchAction = 'none';
     mount.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 2.1, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.075;
+    controls.enablePan = true;
+    controls.enableZoom = true;
+    controls.screenSpacePanning = true;
+    controls.minDistance = 3.2;
+    controls.maxDistance = 24;
+    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    };
+    controls.update();
 
     const environmentMap = createStudioEnvironmentTexture();
     scene.environment = environmentMap;
@@ -127,6 +150,9 @@ export function JugglingScene({
     gizmoLines.forEach((line) => gizmoGroup.add(line));
     targetMarkers.forEach((marker) => gizmoGroup.add(marker));
     scene.add(gizmoGroup);
+
+    const sceneControlGizmos = createSceneControlGizmos();
+    scene.add(sceneControlGizmos);
 
     const clock = new THREE.Clock();
     let elapsed = 0;
@@ -201,6 +227,7 @@ export function JugglingScene({
       else clock.getDelta();
 
       const state = stateRef.current;
+      sceneControlGizmos.visible = state.showGizmos;
       const features = normalizeRenderFeatures(state.renderFeatures);
       const count = normalizedPersonCount(state.personCount);
       const validation = validateSiteswap(state.pattern);
@@ -249,8 +276,7 @@ export function JugglingScene({
         updateCaustic(causticMeshes[index], ball, elapsed, state.ballMaterial, features);
       });
 
-      camera.position.x = Math.sin(elapsed * 0.11) * 0.52;
-      camera.lookAt(0, 2.1, 0);
+      controls.update();
       renderer.render(scene, camera);
     }
 
@@ -268,6 +294,7 @@ export function JugglingScene({
     return () => {
       cancelAnimationFrame(frameId);
       window.removeEventListener('resize', resize);
+      controls.dispose();
       disposeGroup(scene);
       environmentMap.dispose();
       Object.values(textures).forEach((texture) => texture.dispose?.());
@@ -529,6 +556,77 @@ function createTargetMarker() {
   );
   marker.visible = false;
   return marker;
+}
+
+function createSceneControlGizmos() {
+  const group = new THREE.Group();
+  group.name = 'scene-control-gizmos';
+
+  const orbitMaterial = new THREE.MeshBasicMaterial({
+    color: '#8dd3ff',
+    transparent: true,
+    opacity: 0.26,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const accentMaterial = new THREE.MeshBasicMaterial({
+    color: '#b497ff',
+    transparent: true,
+    opacity: 0.42,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  const floorOrbit = new THREE.Mesh(new THREE.TorusGeometry(3.45, 0.011, 8, 180), orbitMaterial.clone());
+  floorOrbit.name = 'camera-orbit-radius-gizmo';
+  floorOrbit.rotation.x = Math.PI / 2;
+  floorOrbit.position.y = 0.055;
+  group.add(floorOrbit);
+
+  const verticalOrbit = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.009, 8, 144), accentMaterial.clone());
+  verticalOrbit.name = 'camera-tilt-gizmo';
+  verticalOrbit.rotation.y = Math.PI / 2;
+  verticalOrbit.position.set(0, 2.1, 0);
+  group.add(verticalOrbit);
+
+  const focusTarget = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.115, 1),
+    new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.82, blending: THREE.AdditiveBlending })
+  );
+  focusTarget.name = 'orbit-focus-target-gizmo';
+  focusTarget.position.set(0, 2.1, 0);
+  group.add(focusTarget);
+
+  const focusLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.06, 0), new THREE.Vector3(0, 2.1, 0)]),
+    new THREE.LineDashedMaterial({ color: '#ffffff', dashSize: 0.08, gapSize: 0.07, transparent: true, opacity: 0.3 })
+  );
+  focusLine.computeLineDistances();
+  group.add(focusLine);
+
+  const axisOrigin = new THREE.Vector3(-6.25, 0.18, -3.35);
+  const axisSpecs = [
+    { direction: new THREE.Vector3(1, 0, 0), color: '#ff5f7a' },
+    { direction: new THREE.Vector3(0, 1, 0), color: '#8aff80' },
+    { direction: new THREE.Vector3(0, 0, 1), color: '#8dd3ff' },
+  ];
+  axisSpecs.forEach(({ direction, color }) => {
+    const arrow = new THREE.ArrowHelper(direction, axisOrigin, 0.84, color, 0.18, 0.09);
+    arrow.name = 'scene-axis-arrow-gizmo';
+    group.add(arrow);
+  });
+
+  const panPlane = new THREE.Mesh(
+    new THREE.RingGeometry(0.34, 0.48, 4, 1),
+    new THREE.MeshBasicMaterial({ color: '#ffcc66', transparent: true, opacity: 0.36, side: THREE.DoubleSide })
+  );
+  panPlane.name = 'pan-plane-gizmo';
+  panPlane.rotation.x = Math.PI / 2;
+  panPlane.rotation.z = Math.PI / 4;
+  panPlane.position.copy(axisOrigin);
+  group.add(panPlane);
+
+  return group;
 }
 
 function updateGizmoLine(line, from, to, color) {
