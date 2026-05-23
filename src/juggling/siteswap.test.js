@@ -4,6 +4,7 @@ import {
   validateSiteswap,
   getThrowPosition,
   samplePatternState,
+  getPersonPoses,
   EXAMPLE_PATTERNS,
 } from './siteswap.js';
 
@@ -39,6 +40,22 @@ describe('siteswap pattern logic', () => {
     const state = samplePatternState('441', 3.4);
     expect(state.balls.length).toBeGreaterThan(0);
     expect(state.balls.every((ball) => ball.height > 0)).toBe(true);
+  });
+
+  it('samples passing throws between multiple jugglers when enabled', () => {
+    const state = samplePatternState('5', 1.2, { personCount: 2, passing: true, passThreshold: 5 });
+    expect(state.people).toHaveLength(2);
+    expect(state.balls.length).toBeGreaterThan(0);
+    expect(state.balls.some((ball) => ball.from.personIndex !== ball.to.personIndex)).toBe(true);
+    expect(state.balls.every((ball) => Number.isFinite(ball.rotation.x))).toBe(true);
+  });
+
+  it('returns animated person poses with moving hands for each juggler', () => {
+    const early = getPersonPoses('3', 0.1, { personCount: 2 });
+    const later = getPersonPoses('3', 0.6, { personCount: 2 });
+    expect(early).toHaveLength(2);
+    expect(early[0].body.x).toBeLessThan(early[1].body.x);
+    expect(early[0].leftHand.y).not.toBeCloseTo(later[0].leftHand.y, 4);
   });
 
   it('ships with ready-to-try pattern presets', () => {

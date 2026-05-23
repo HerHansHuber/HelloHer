@@ -10,9 +10,10 @@ export const EXAMPLE_PATTERNS = [
   { name: 'High 5-ball', siteswap: '744', description: 'A tall five-ball pattern with same-hand holds.' },
 ];
 
-const HAND_SPACING = 2.25;
+const HAND_SPACING = 0.92;
+const PERSON_SPACING = 4.7;
 const BASE_Y = 0.72;
-const HAND_Y = 0.42;
+const HAND_Y = 1.28;
 const DEPTH_STEP = 0.18;
 
 export function throwCharToHeight(char) {
@@ -71,61 +72,142 @@ export function handForBeat(beat) {
   return beat % 2 === 0 ? -1 : 1;
 }
 
-export function getThrowPosition(startBeat, height, progress) {
+export function normalizeSceneOptions(options = {}) {
+  return {
+    personCount: clamp(Math.round(options.personCount ?? 1), 1, 4),
+    passing: Boolean(options.passing),
+    passThreshold: Math.max(1, Number(options.passThreshold ?? 5)),
+    speed: options.speed ?? 1,
+  };
+}
+
+export function getPersonOffset(personIndex = 0, personCount = 1) {
+  return (personIndex - (personCount - 1) / 2) * PERSON_SPACING;
+}
+
+export function getHandPosition(beat, options = {}) {
+  const { personIndex = 0, personCount = 1, time = beat } = options;
+  const side = handForBeat(beat);
+  const bodyX = getPersonOffset(personIndex, personCount);
+  const lift = 0.28
+    + Math.max(0, Math.sin((time - beat + 0.15) * Math.PI)) * 0.34
+    + Math.sin(time * Math.PI * 2 + personIndex * 0.7 + side) * 0.08;
+  const reach = 1 + Math.max(0, Math.sin((time - beat) * Math.PI)) * 0.22;
+  return {
+    x: bodyX + side * HAND_SPACING * reach,
+    y: HAND_Y + lift,
+    z: (personIndex - (personCount - 1) / 2) * 0.2,
+    side,
+    personIndex,
+  };
+}
+
+export function getThrowEndpoints(startBeat, height, options = {}) {
+  const scene = normalizeSceneOptions(options);
+  const fromPerson = options.personIndex ?? 0;
+  const passThrow = scene.passing && scene.personCount > 1 && height >= scene.passThreshold;
+  const toPerson = passThrow ? (fromPerson + 1) % scene.personCount : fromPerson;
+  return {
+    from: getHandPosition(startBeat, { ...scene, personIndex: fromPerson, time: options.time ?? startBeat }),
+    to: getHandPosition(startBeat + height, { ...scene, personIndex: toPerson, time: options.time ?? startBeat + height }),
+    pass: passThrow,
+    fromPerson,
+    toPerson,
+  };
+}
+
+export function getThrowPosition(startBeat, height, progress, options = {}) {
   const clamped = Math.max(0, Math.min(1, progress));
-  const startHand = handForBeat(startBeat);
-  const crosses = height % 2 === 1;
-  const endHand = crosses ? -startHand : startHand;
-  const x = lerp(startHand * HAND_SPACING, endHand * HAND_SPACING, easeInOutSine(clamped));
-  const arcHeight = Math.max(0.25, Math.sqrt(height) * 1.45);
-  const y = BASE_Y + Math.sin(Math.PI * clamped) * arcHeight - Math.abs(clamped - 0.5) * 0.24;
-  const z = Math.sin(clamped * Math.PI * 2) * DEPTH_STEP * (crosses ? 1 : -1) + (height % 3) * 0.04;
+  const { from, to, pass } = getThrowEndpoints(startBeat, height, options);
+  const x = lerp(from.x, to.x, easeInOutSine(clamped));
+  const distance = Math.hypot(to.x - from.x, to.z - from.z);
+  const arcHeight = Math.max(0.25, Math.sqrt(height) * 1.18 + distance * 0.16);
+  const y = BASE_Y + Math.sin(Math.PI * clamped) * arcHeight + lerp(from.y, to.y, clamped) * 0.28;
+  const z = lerp(from.z, to.z, clamped) + Math.sin(clamped * Math.PI * 2) * DEPTH_STEP * (pass ? 1.8 : 1) + (height % 3) * 0.04;
   return { x, y, z };
 }
 
-export function getHandPosition(beat) {
-  return { x: handForBeat(beat) * HAND_SPACING, y: HAND_Y, z: 0 };
+export function getPersonPoses(input, time, options = {}) {
+  const scene = normalizeSceneOptions(options);
+  const validation = validateSiteswap(input);
+  const beat = Math.floor(Math.max(0, time * scene.speed));
+  const phase = (Math.max(0, time * scene.speed) % 1);
+  const bob = Math.sin(time * Math.PI * 2) * 0.035;
+
+  return Array.from({ length: scene.personCount }, (_, personIndex) => {
+    const bodyX = getPersonOffset(personIndex, scene.personCount);
+    const leftBeat = beat % 2 === 0 ? beat : beat + 1;
+    const rightBeat = beat % 2 === 1 ? beat : beat + 1;
+    const leftHand = getHandPosition(leftBeat, { ...scene, personIndex, time: beat + phase });
+    const rightHand = getHandPosition(rightBeat, { ...scene, personIndex, time: beat + phase });
+    const activity = validation.valid ? validation.throws[beat % validation.period] ?? 3 : 3;
+    return {
+      personIndex,
+      body: { x: bodyX, y: 0.9 + bob, z: personIndex % 2 === 0 ? 0.12 : -0.12 },
+      head: { x: bodyX, y: 2.08 + bob, z: 0 },
+      leftHand,
+      rightHand,
+      rhythm: phase,
+      activity,
+      color: personIndex === 0 ? '#8dd3ff' : personIndex === 1 ? '#ffcc66' : colorForHeight(personIndex + 4),
+    };
+  });
 }
 
 export function samplePatternState(input, time, options = {}) {
   const validation = validateSiteswap(input);
-  if (!validation.valid) return { ...validation, balls: [], throwsInFlight: [] };
+  const scene = normalizeSceneOptions(options);
+  if (!validation.valid) return { ...validation, balls: [], throwsInFlight: [], people: getPersonPoses(input, time, scene) };
 
   const { throws, period } = validation;
-  const speed = options.speed ?? 1;
-  const scaledTime = Math.max(0, time * speed);
+  const scaledTime = Math.max(0, time * scene.speed);
   const currentBeat = Math.floor(scaledTime);
   const maxHeight = Math.max(...throws, 1);
   const throwsInFlight = [];
 
-  for (let beat = currentBeat - maxHeight - period; beat <= currentBeat + 1; beat += 1) {
-    const patternIndex = mod(beat, period);
-    const height = throws[patternIndex];
-    if (height <= 0) continue;
-    const progress = (scaledTime - beat) / height;
-    if (progress >= 0 && progress <= 1) {
-      const position = getThrowPosition(beat, height, progress);
-      throwsInFlight.push({
-        id: `${beat}-${height}`,
-        beat,
-        patternIndex,
-        height,
-        progress,
-        position,
-        from: getHandPosition(beat),
-        to: getHandPosition(beat + height),
-        color: colorForHeight(height),
-      });
+  for (let personIndex = 0; personIndex < scene.personCount; personIndex += 1) {
+    const personPhase = scene.passing ? personIndex * 0.5 : 0;
+    const personTime = scaledTime + personPhase;
+    const personBeat = Math.floor(personTime);
+
+    for (let beat = personBeat - maxHeight - period; beat <= personBeat + 1; beat += 1) {
+      const patternIndex = mod(beat, period);
+      const height = throws[patternIndex];
+      if (height <= 0) continue;
+      const progress = (personTime - beat) / height;
+      if (progress >= 0 && progress <= 1) {
+        const endpointOptions = { ...scene, personIndex, time: beat + progress };
+        const position = getThrowPosition(beat, height, progress, endpointOptions);
+        const endpoints = getThrowEndpoints(beat, height, endpointOptions);
+        throwsInFlight.push({
+          id: `${personIndex}-${beat}-${height}`,
+          beat,
+          patternIndex,
+          height,
+          progress,
+          position,
+          from: endpoints.from,
+          to: endpoints.to,
+          pass: endpoints.pass,
+          fromPerson: endpoints.fromPerson,
+          toPerson: endpoints.toPerson,
+          rotation: {
+            x: (beat + progress) * height * 1.7,
+            y: (personIndex + 1) * 0.6 + progress * Math.PI * 2,
+            z: (height % 4) * 0.45 + progress * Math.PI,
+          },
+          color: endpoints.pass ? '#ffcc66' : colorForHeight(height),
+        });
+      }
     }
   }
 
-  // Stable visual order keeps React/Three object updates predictable.
-  throwsInFlight.sort((a, b) => a.beat - b.beat);
-  return { ...validation, balls: throwsInFlight, throwsInFlight };
+  throwsInFlight.sort((a, b) => a.beat - b.beat || a.fromPerson - b.fromPerson);
+  return { ...validation, balls: throwsInFlight, throwsInFlight, people: getPersonPoses(input, time, scene) };
 }
 
-export function makeArcPoints(startBeat, height, segments = 40) {
-  return Array.from({ length: segments + 1 }, (_, index) => getThrowPosition(startBeat, height, index / segments));
+export function makeArcPoints(startBeat, height, segments = 40, options = {}) {
+  return Array.from({ length: segments + 1 }, (_, index) => getThrowPosition(startBeat, height, index / segments, options));
 }
 
 export function colorForHeight(height) {
@@ -143,4 +225,8 @@ function easeInOutSine(t) {
 
 function mod(n, m) {
   return ((n % m) + m) % m;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }

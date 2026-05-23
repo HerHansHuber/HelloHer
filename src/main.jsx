@@ -8,6 +8,10 @@ function App() {
   const [pattern, setPattern] = useState('531');
   const [speed, setSpeed] = useState(1.05);
   const [showTrails, setShowTrails] = useState(true);
+  const [showGizmos, setShowGizmos] = useState(true);
+  const [personCount, setPersonCount] = useState(1);
+  const [passing, setPassing] = useState(false);
+  const [passThreshold, setPassThreshold] = useState(5);
   const [paused, setPaused] = useState(false);
   const validation = useMemo(() => validateSiteswap(pattern), [pattern]);
   const selectedPreset = EXAMPLE_PATTERNS.find((item) => item.siteswap === pattern);
@@ -64,27 +68,74 @@ function App() {
             />
           </label>
 
-          <div className="button-row">
+          <label className="control-block">
+            <span>Jugglers: {personCount}</span>
+            <input
+              type="range"
+              min="1"
+              max="4"
+              step="1"
+              value={personCount}
+              onChange={(event) => setPersonCount(Number(event.target.value))}
+            />
+          </label>
+
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={passing}
+              onChange={(event) => setPassing(event.target.checked)}
+            />
+            <span>Passing mode: high throws go to the next person</span>
+          </label>
+
+          <label className="control-block compact-control">
+            <span>Pass threshold: throws ≥ {passThreshold}</span>
+            <input
+              type="range"
+              min="3"
+              max="9"
+              step="1"
+              value={passThreshold}
+              onChange={(event) => setPassThreshold(Number(event.target.value))}
+            />
+          </label>
+
+          <div className="button-row three-buttons">
             <button onClick={() => setPaused((value) => !value)}>{paused ? 'Resume' : 'Pause'}</button>
             <button className="ghost" onClick={() => setShowTrails((value) => !value)}>
               {showTrails ? 'Hide arcs' : 'Show arcs'}
             </button>
+            <button className="ghost" onClick={() => setShowGizmos((value) => !value)}>
+              {showGizmos ? 'Hide gizmos' : 'Show gizmos'}
+            </button>
           </div>
 
           <div className="info-grid">
-            <div><span>Balls</span><strong>{validation.valid ? validation.balls : '—'}</strong></div>
+            <div><span>Balls</span><strong>{validation.valid ? validation.balls * personCount : '—'}</strong></div>
+            <div><span>Jugglers</span><strong>{personCount}</strong></div>
             <div><span>Period</span><strong>{validation.valid ? validation.period : '—'}</strong></div>
+            <div><span>Mode</span><strong>{passing && personCount > 1 ? 'Passing' : 'Solo'}</strong></div>
             <div><span>Throws</span><strong>{validation.throws?.join(' · ') || '—'}</strong></div>
           </div>
 
           <div className="note">
             <strong>Notation:</strong> digits are throw heights; letters continue above 9 (<code>a = 10</code>).
-            The validator checks integer ball count and landing collisions like a basic asynchronous siteswap engine.
+            Passing mode duplicates the pattern across jugglers and sends throws at/above the threshold to the next person.
           </div>
         </aside>
 
         <section className="stage-card">
-          <JugglingScene pattern={pattern} speed={speed} paused={paused} showTrails={showTrails} />
+          <JugglingScene
+            pattern={pattern}
+            speed={speed}
+            paused={paused}
+            showTrails={showTrails}
+            showGizmos={showGizmos}
+            personCount={personCount}
+            passing={passing}
+            passThreshold={passThreshold}
+          />
         </section>
       </section>
     </main>
